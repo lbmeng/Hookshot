@@ -109,9 +109,11 @@ uint64_t hos_region_alloc(uint64_t size, uint64_t align) {
         regions[at].size = size;
         nregions++;
         if (found < region_floor && found >= HOS_HEAP_BASE) region_floor = found;   /* (not the holes below) */
+        hos_memory_event(HOS_MEM_REGION, found, found, size);
     }
     UNLOCK();
     if (found) hos_commit(found, size);
+    if (!found) hos_memory_event(HOS_MEM_FAILURE, HOS_MEM_REGION, 0, size);
     if (!found) hos_fatal(NULL, "address space exhausted (%#llx bytes asked, heap %#llx)", (unsigned long long)size,
                           (unsigned long long)hos_heap_size);
     return found;
@@ -161,6 +163,8 @@ void hos_region_free(uint64_t addr) {
             freed_size = regions[i].size;
             memmove(&regions[i], &regions[i + 1], (nregions - i - 1) * sizeof(Range));
             nregions--;
+            hos_memory_event(HOS_MEM_REGION, addr, 0, 0);
+            hos_memory_unmap(freed, freed_size);
             break;
         }
     }
@@ -194,6 +198,7 @@ HLE(_ZN2nn2os17SetMemoryHeapSizeEm) {
         hos_log("SetMemoryHeapSize(%#llx): collides with address regions at %#llx", (unsigned long long)size,
                 (unsigned long long)region_floor);
         RET(0xCA01);   /* svc::ResultOutOfMemory */
+        hos_memory_event(HOS_MEM_FAILURE, HOS_MEM_HEAP, 0, size);
         return;
     }
     if (size < hos_heap_size) {
@@ -209,6 +214,7 @@ HLE(_ZN2nn2os17SetMemoryHeapSizeEm) {
     }
     if (size > hos_heap_size) hos_commit(HOS_HEAP_BASE + hos_heap_size, size - hos_heap_size);
     hos_heap_size = size;
+    hos_memory_event(HOS_MEM_HEAP, 0, HOS_HEAP_BASE, size);
     hos_log("heap: %llu MB at %#llx", (unsigned long long)(size >> 20), (unsigned long long)HOS_HEAP_BASE);
     RET(0);
 }
@@ -225,6 +231,7 @@ HLE(_ZN2nn2os19AllocateMemoryBlockEPmm) {
     if (!ok) {
         hos_log("AllocateMemoryBlock(%#llx): heap exhausted", (unsigned long long)size);
         RET(0x1A01);   /* os::ResultOutOfMemory */
+        hos_memory_event(HOS_MEM_FAILURE, HOS_MEM_HEAP, 0, size);
         return;
     }
     G64(out) = a;
@@ -254,6 +261,7 @@ HLE(_ZN2nn2os19AllocateMemoryPagesEmm) {
         RET(0xCA01);   /* svc::ResultOutOfMemory */
         return;
     }
+    hos_memory_event(HOS_MEM_PAGES, a, a, n);
     static int zero_all = -1;
     if (zero_all < 0) zero_all = getenv("HOS_ZERO_ALL_PAGES") != NULL;
     if (end > (1ULL << 32) && !zero_all) {
@@ -299,6 +307,7 @@ HLE(_ZN2nn2os15FreeMemoryPagesEmm) {
         RET(0xCA01);
         return;
     }
+    hos_memory_unmap(ARG(0), ARG(1));
     if (ARG(0) + ARG(1) > (1ULL << 32)) {   /* (mkw-recomp: the pair of AllocateMemoryPages' commit above) */
         const uint64_t lo = (ARG(0) + 0xFFF) & ~0xFFFULL, hi = (ARG(0) + ARG(1)) & ~0xFFFULL;
         /* (pages the Vulkan back end imported, as part of a pool's 16 MB chunk, stay committed and are zeroed: the GPU

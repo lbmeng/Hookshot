@@ -86,6 +86,13 @@ void vkDestroyBuffer(VkDevice, VkBuffer b, const VkAllocationCallbacks*) {
 void vkFreeMemory(VkDevice, VkDeviceMemory m, const VkAllocationCallbacks*) {
     assert(memories.erase(m) == 1); freed_memory++; release_order.push_back('M');
 }
+VkResult profile_allocate_memory(VkDevice device, const VkMemoryAllocateInfo* info,
+                                const VkAllocationCallbacks* callbacks, VkDeviceMemory* memory) {
+    return vkAllocateMemory(device, info, callbacks, memory);
+}
+void profile_free_memory(VkDevice device, VkDeviceMemory memory, const VkAllocationCallbacks* callbacks) {
+    vkFreeMemory(device, memory, callbacks);
+}
 void release_texel_buffer_views(VkBuffer b) {
     assert(buffers.count(b));   // Owner invalidation precedes raw buffer destruction.
     owner_releases++;

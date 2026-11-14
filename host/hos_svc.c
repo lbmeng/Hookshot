@@ -359,6 +359,7 @@ void a64_svc(Ctx *c, uint32_t imm) {
             return;
         }
         hos_heap_size = c->x[1];
+        hos_memory_event(HOS_MEM_HEAP, 0, HOS_HEAP_BASE, hos_heap_size);
         c->x[0] = R_OK;
         c->x[1] = HOS_HEAP_BASE;
         return;
@@ -467,6 +468,7 @@ void a64_svc(Ctx *c, uint32_t imm) {
         return;
     }
     case 0x2C:   /* MapPhysicalMemory(address, size) */
+        hos_memory_event(HOS_MEM_PAGES, c->x[0], c->x[0], c->x[1]);
         hos_commit(c->x[0], c->x[1]);
         if (hos_trace) hos_log("MapPhysicalMemory(%#llx, %#llx)", (unsigned long long)c->x[0], (unsigned long long)c->x[1]);
         c->x[0] = R_OK;
@@ -476,6 +478,7 @@ void a64_svc(Ctx *c, uint32_t imm) {
             c->x[0] = 0xCA01;
             return;
         }
+        hos_memory_unmap(c->x[0], c->x[1]);
         {   /* (pages under a Vulkan import stay committed, zeroed: hos_mem.c FreeMemoryPages) */
             extern int rx_guest_imported(uint64_t lo, uint64_t hi);
             if (rx_guest_imported(c->x[0], c->x[0] + c->x[1])) memset(GP(c->x[0]), 0, (size_t)c->x[1]);

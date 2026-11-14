@@ -14,6 +14,7 @@
 #define HOS_H
 #include "a64.h"
 #include <stdarg.h>
+#include "../gpu/vk/memory_profile.h"
 
 #define HLE(sym) void imp_##sym(Ctx *c)
 /* HOS_GAME_VERSION: the game update the address hooks below are for, from the build (build.py reads the main

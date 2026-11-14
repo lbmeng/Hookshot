@@ -10,6 +10,7 @@
 
 #include "vk_loader.h"
 #include "vk_api.h"
+#include "memory_profile.h"
 
 #if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
 #include <intrin.h>
@@ -27,6 +28,13 @@ namespace mkwvk {
 
 extern std::vector<std::string> gpu_device_names;
 extern const MkwVkHost* host;
+inline void memory_profile_event(int kind, uint64_t id, uint64_t address, uint64_t size) {
+    if (host && host->memory_event) host->memory_event(kind, id, address, size);
+}
+VkResult profile_allocate_memory(VkDevice device, const VkMemoryAllocateInfo* info,
+                                const VkAllocationCallbacks* callbacks, VkDeviceMemory* memory);
+void profile_free_memory(VkDevice device, VkDeviceMemory memory, const VkAllocationCallbacks* callbacks);
+void profile_memory_block(uint32_t type, VkDeviceMemory memory, uint64_t size);
 void logf(const char* fmt, ...);
 void queue_flush_locked();   // (vk_replay.cpp, RX_VK_BATCH: held submits out; dev.present_mu held)
 void queue_flush();          // (the same, taking dev.present_mu)

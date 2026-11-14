@@ -272,3 +272,163 @@ The other rows are 0 Off and 1 On. Some are read at the start, before the menu e
 
 License: GPL-3.0-or-later, as mkw-recomp: a64-kit's translator is suyu's (GPL-2.0-or-later) and Eden's code is
 GPL-3.0.
+
+## Memory budget experiment
+
+The collector and `scripts/memory_experiment.py` measure a reported-memory sweep without changing allocation
+success or imposing an operating-system memory limit. `HOS_MEMORY_MB` remains advisory. A successful run at 3285 MiB
+does not establish that the game fits in an original Switch's physical memory.
+
+Rebuild **both** the executable and Vulkan backend from this checkout. Their shared ABI is now version 16. Updating
+only one binary can cause Vulkan initialization to fail. Use the normal build dependencies and your own supported
+dump; the Python experiment runner itself needs only Python 3.10 or later, on Windows or Linux.
+
+All builds, experiment configuration, staged runtimes, copied saves and results belong in one task workspace below
+the configured `TMPDIR`. On POSIX, that base must be a directory owned by the current user with mode 0700 and must
+not be a symlink. The runner checks those properties. On Windows, use a private directory belonging to the testing
+account; the runner checks the directory and symlink properties but does not inspect Windows ACLs.
+
+### Prepare the instrumented game
+
+Use a dedicated build and game output directory, not a normal play installation. For example, with `TASK_WORK`
+already set to the absolute path of a private task workspace under `TMPDIR`:
+
+```sh
+python -I nx2/make_game.py --nup /absolute/path/to/game.nup --work "$TASK_WORK/build" --out "$TASK_WORK/game" --jobs 4
+```
+
+The same command works with `--romfs <folder> --exefs <folder>` instead of `--nup`. Do not use `--update` during a
+measurement. An existing build cache can save recompilation of unchanged lifted code; host files, the Vulkan backend
+and their changed headers must still rebuild.
+
+Copy `scripts/memory_experiment.example.json` or `scripts/memory_experiment.windows.example.json` into the task
+workspace and replace the five absolute paths. `executable` must point to the actual game binary, not the builder
+or launcher. In a packaged game it is `bin/hookshot` or `bin/hookshot.exe`; a source build may place it directly in
+the game folder. `user_template` must be a separate, immutable baseline copy of the user directory containing the
+starting save. The runner copies it for every case, including its initial caches.
+
+### Run on Linux
+
+```sh
+python -I scripts/memory_experiment.py check --config "$TASK_WORK/memory.json"
+python -I scripts/memory_experiment.py run --config "$TASK_WORK/memory.json" --out "$TASK_WORK/first-run" --budget 9809
+```
+
+After verifying the first run, use a new, empty results directory for the full sweep:
+
+```sh
+python -I scripts/memory_experiment.py run --config "$TASK_WORK/memory.json" --out "$TASK_WORK/sweep"
+```
+
+### Run on Windows
+
+Set `TMPDIR` to an existing private scratch base and `$TaskWork` to the task workspace below it. Edit the Windows
+JSON template and save it as `$TaskWork/memory.json`. From PowerShell in the source checkout:
+
+```powershell
+python -I scripts/memory_experiment.py check --config "$TaskWork/memory.json"
+python -I scripts/memory_experiment.py run --config "$TaskWork/memory.json" --out "$TaskWork/first-run" --budget 9809
+python -I scripts/memory_experiment.py run --config "$TaskWork/memory.json" --out "$TaskWork/sweep"
+```
+
+The default matrix is 9809, 8192, 6144, 4096 and 3285 MiB, 300 seconds per case, one repetition. Increase `repeats`
+to 3 after the route is reproducible. Each case stages its own executable, sibling libraries, shader seeds/caches,
+image and options, and copies the same baseline user directory. RomFS is read at the supplied path. Source game
+files, play settings and saves are not changed. Keep sufficient space for those per-case copies.
+
+The staged options disable frame generation and output upscaling, select handheld mode and fix the scene scale
+at 50%. The actual image dimensions must be checked in `stderr.log`; 50% does not necessarily mean 540p. Inherited
+`HOS_*`, `RX_*` and `HOOKSHOT_*` variables are removed before the fixed configuration is applied. The player's
+`hookshot_env.txt` is bypassed. `environment.json` records the effective experiment switches.
+
+### Mark observed scene transitions
+
+Play the same route for each case. From a second terminal, use the displayed results directory:
+
+```sh
+python -I scripts/memory_experiment.py mark --out "$TASK_WORK/sweep" --phase forest-steady
+python -I scripts/memory_experiment.py mark --out "$TASK_WORK/sweep" --phase enter-house
+python -I scripts/memory_experiment.py mark --out "$TASK_WORK/sweep" --phase house-steady
+python -I scripts/memory_experiment.py mark --out "$TASK_WORK/sweep" --phase leave-house
+python -I scripts/memory_experiment.py mark --out "$TASK_WORK/sweep" --phase forest-return
+```
+
+Issue each command when that phase starts: mark `enter-house` immediately before entering, and `house-steady`
+after the scene is fully loaded. Hold each steady scene for at least 20 seconds, then repeat the transition.
+Use additional names for later transitions if separate summaries are wanted. PowerShell uses `$TaskWork` in place
+of `$TASK_WORK`. Phase commands only mark measurements; they do not control the game or verify its location.
+
+Optional `scheduled_phases` entries have `at_seconds` and `phase` fields. They describe a timed plan, not proof that
+a scene loaded. `summary.json` distinguishes manual markers from scheduled markers and lists required phases that
+have not been manually observed. A `captured` status means valid telemetry with presents, not complete scene coverage.
+
+### Measurements and interpretation
+
+| Output | Meaning |
+|---|---|
+| `manifest.json` | Configuration, source commit, platform, executable and image hashes |
+| `memory.csv` | Runtime allocation counters, interval peaks, failures, Vulkan attachment and presents |
+| `process.csv` | Sampled OS RSS, OS RSS high-water, and Windows private commit or Linux swap |
+| `markers.jsonl` | Monotonic timestamps and origins of phase markers |
+| `stdout.log`, `stderr.log` | Boot/version/GPU diagnostics, allocation errors and resolution logs |
+| `summary.json`, `report.md` | Per-budget results and per-phase peaks |
+
+The runtime columns are byte counts:
+
+| Column family | Scope |
+|---|---|
+| `guest_image`, `guest_system`, `guest_heap`, `guest_regions`, `guest_pages` | Image, reserved runtime system range, requested heap/regions and explicitly mapped pages |
+| `guest_address_union` | Union of those guest address ranges, removing overlapping ranges |
+| `guest_explicit_union` | Image/system/heap/explicit page-map union, excluding address-region reservations |
+| `nvn_pool_registered`, `nvn_pool_unique_address` | Nonvirtual NVN pool registrations and their address union |
+| `vk_local_blocks`, `vk_host_blocks` | Actual Vulkan device-memory allocations, including VMA pool blocks and slack |
+| `vk_imported` | Logical size of imported host/dma-buf memory handles, reported separately as aliases |
+| `vk_image_allocations`, `vk_render_target_allocations` | Logical VMA image suballocations, split by attachment usage |
+| `vk_buffer_allocations`, `vk_host_buffer_allocations` | Logical VMA buffer suballocations, split by host visibility |
+
+Never add all columns together. NVN pools overlap guest storage, imported memory aliases it, and VMA suballocations
+are already contained in device-memory blocks. On unified-memory hardware, device-local memory may also be host
+visible. Guest address unions do not deduplicate separate virtual aliases of the same physical pages and do not
+measure residency. The guest heap/region values are reservations or API requests, not internal allocator live bytes.
+The runtime system range is reserved capacity, not the amount its objects have consumed.
+The explicit union distinguishes page mappings from large address-region reservations. Direct writes or commits
+inside a region without a page-map call are not included in that subset, so it is not a physical-residency count.
+
+Allocation and free events update interval high-water counters, so a buffer allocated and freed between two samples
+still appears in its interval peak. Partial page unmaps and repeated/overlapping maps are handled by the page ledger.
+The nominal sampling interval is 100 ms. Phase peaks span adjacent runtime samples; scheduling and I/O can lengthen
+the interval. Use actual timestamps and `max_runtime_sample_gap_ms` to assess boundary uncertainty. A forced stop/crash
+can lose the final interval. Per-phase RSS peaks are sampled and can miss a short residency spike. The OS high-water
+counter is process-wide as of the last successful query, not a per-phase peak.
+
+Untracked native allocations (including general libc allocations, shader compiler data and driver internals) remain
+visible in OS process measurements but are not fully classified. Profiler bookkeeping and its sampler thread also
+contribute to RSS. This is a diagnostic memory experiment, not a zero-overhead CPU benchmark. No total physical
+memory minimum or original-Switch feasibility verdict is computed by the script.
+
+Reported allocation failures include the instrumented runtime and Vulkan paths, including errors other than OOM;
+inspect `stderr.log` for their cause. Low-budget crashes remain failed
+measurements rather than successful low-memory cases. The sweep continues to other budgets after game failures,
+but stops on missing/corrupt telemetry or a mismatched backend. Results are never overwritten and scratch data is
+not automatically removed. Ctrl+C stops the current child and leaves the collected data and summary.
+
+Regenerate summaries without running the game:
+
+```sh
+python -I scripts/memory_experiment.py report --out "$TASK_WORK/sweep"
+```
+
+Before drawing a memory conclusion, check the status, missing observed phases, allocation failures and the raw
+transition samples. Preserve the final report outside disposable scratch storage. Game data, copied saves and
+caches stay out of version control.
+
+Game-free validation:
+
+```sh
+python -I -B tests/test_memory_experiment.py
+```
+
+This compiles the real C collector and exercises overlap accounting, page splitting, concurrent updates, transient
+peaks, save/config isolation, multiple budgets and failed children using a synthetic executable. Its numbers are
+test fixtures, not measurements of OoT. Target Windows execution and a complete game build still require testing
+on the machine that has the dump and GPU.

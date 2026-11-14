@@ -3019,6 +3019,7 @@ void do_present(const nvn_tex* t, const int crop[4]) {
         texture_frame(completed());
         full_barrier(r.cmd);
         presents++;
+        memory_profile_event(HOS_MEM_PRESENT, 0, 0, 0);
         presents_now = presents;
         wide_sides_tick();
         if (presents == 1) hang_watch_start();

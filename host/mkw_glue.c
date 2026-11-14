@@ -23,6 +23,7 @@ void hos_commit(uint64_t addr, uint64_t size) {
     }
     const uint64_t lo = addr & ~0xFFFFULL, hi = (addr + size + 0xFFFF) & ~0xFFFFULL;
     if (!VirtualAlloc(GP(lo), (SIZE_T)(hi - lo), MEM_COMMIT, PAGE_READWRITE)) {
+        hos_memory_event(HOS_MEM_FAILURE, HOS_MEM_PAGES, lo, hi - lo);
         const DWORD err = GetLastError();
         hos_log("mem: commit of %#llx bytes at %#llx failed (error %lu)", (unsigned long long)(hi - lo),
                 (unsigned long long)lo, err);

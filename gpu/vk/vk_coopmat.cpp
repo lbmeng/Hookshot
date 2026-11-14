@@ -126,7 +126,7 @@ bool run_shader(const std::vector<uint32_t>& code, std::vector<uint32_t>& data) 
     ai.allocationSize = req.size;
     ai.memoryTypeIndex = type;
     VkDeviceMemory memory{};
-    if (type == UINT32_MAX || vkAllocateMemory(dev.device, &ai, nullptr, &memory) != VK_SUCCESS) {
+    if (type == UINT32_MAX || profile_allocate_memory(dev.device, &ai, nullptr, &memory) != VK_SUCCESS) {
         vkDestroyBuffer(dev.device, buffer, nullptr);
         return false;
     }
@@ -215,7 +215,7 @@ bool run_shader(const std::vector<uint32_t>& code, std::vector<uint32_t>& data) 
     vkDestroyPipelineLayout(dev.device, layout, nullptr);
     vkDestroyDescriptorSetLayout(dev.device, dsl, nullptr);
     vkDestroyBuffer(dev.device, buffer, nullptr);
-    vkFreeMemory(dev.device, memory, nullptr);
+    profile_free_memory(dev.device, memory, nullptr);
     return ok;
 }
 

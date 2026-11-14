@@ -758,6 +758,12 @@ always shown, has the Descriptor reuse and Sampler cache rows.
 menu font. `RX_VK_UI_PROMPTS=pad` (or `keys`) shows the controller's (or the keyboard's) prompts whatever was used last,
 for screenshots.
 
+For allocation telemetry and repeatable reported-memory sweeps, see the
+[memory experiment guide](docs/development.md#memory-budget-experiment). Profiling is off unless
+`HOS_MEMORY_PROFILE=<new CSV path>` is set. `HOS_MEMORY_SAMPLE_MS` chooses 10 to 1000 ms (default 100), and
+`HOS_MEMORY_PHASE_FILE` names an optional file holding the current phase. Rebuild the executable and Vulkan backend
+together before using it.
+
 For a first run on a 4 GB card such as a GTX 1650, `RX_VK_LOW_SPEC=1` starts with the Minimum (4GB) preset, with
 frame generation and upscaling off. It applies only when there is no `hookshot_options.ini` yet; after that, change
 the settings in the in-game menu.

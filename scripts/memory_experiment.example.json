@@ -1,0 +1,14 @@
+{
+  "game_dir": "/absolute/path/to/instrumented-game",
+  "executable": "/absolute/path/to/instrumented-game/bin/hookshot",
+  "image": "/absolute/path/to/image.bin",
+  "romfs": "/absolute/path/to/romfs",
+  "user_template": "/absolute/path/to/baseline-user-copy",
+  "budgets_mib": [9809, 8192, 6144, 4096, 3285],
+  "seconds": 300,
+  "repeats": 1,
+  "sample_ms": 100,
+  "environment": {},
+  "required_phases": ["forest-steady", "enter-house", "house-steady", "leave-house", "forest-return"],
+  "scheduled_phases": []
+}

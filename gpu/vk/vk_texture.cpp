@@ -3327,7 +3327,7 @@ bool sparse_take(Texture* tex, VkDeviceSize n, VkDeviceMemory& mem, VkDeviceSize
         ai.allocationSize = std::max(kChunk, n);
         ai.memoryTypeIndex = tex->sparse_type;
         VkDeviceMemory m = VK_NULL_HANDLE;
-        if (vkAllocateMemory(dev.device, &ai, nullptr, &m) != VK_SUCCESS) {
+        if (profile_allocate_memory(dev.device, &ai, nullptr, &m) != VK_SUCCESS) {
             static int logged;
             if (logged++ < 8) logf("vk: sparse texture %#llx: no device memory for its blocks", (unsigned long long)tex->gpu);
             return false;
@@ -3842,7 +3842,7 @@ void texture_frame(uint64_t completed) {
         for (VkImageView v : it->views) vkDestroyImageView(dev.device, v, nullptr);
         destroy_image(it->image, it->allocation);
         if (it->buffer) destroy_buffer(it->buffer, it->buffer_alloc);
-        for (VkDeviceMemory m : it->memory) vkFreeMemory(dev.device, m, nullptr);
+        for (VkDeviceMemory m : it->memory) profile_free_memory(dev.device, m, nullptr);
         it = dead.erase(it);
     }
     pool_trim();

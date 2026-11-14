@@ -93,6 +93,9 @@ void vkDestroyBuffer(VkDevice, VkBuffer buffer, const VkAllocationCallbacks*) {
     destroyed_buffers++; destruction_order.push_back('B');
 }
 void vkFreeMemory(VkDevice, VkDeviceMemory, const VkAllocationCallbacks*) {}
+void profile_free_memory(VkDevice device, VkDeviceMemory memory, const VkAllocationCallbacks* callbacks) {
+    vkFreeMemory(device, memory, callbacks);
+}
 VkResult vkCreateBufferView(VkDevice, const VkBufferViewCreateInfo* ci, const VkAllocationCallbacks*, VkBufferView* out) {
     std::lock_guard lk(driver_mu);
     creates++;

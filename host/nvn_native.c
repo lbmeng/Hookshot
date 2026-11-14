@@ -305,6 +305,7 @@ NV(nvnMemoryPoolInitialize) {
     gw(b->mem, o->size);   /* (hookshot: the storage lies in guest memory) */
     o->mem = b->mem;
     o->gpu = b->mem;
+    hos_memory_event(HOS_MEM_NVN_POOL, U64(0), o->gpu, o->size);
     hos_gpu_track(o->gpu, o->size, 1);   /* (the CPU's writes to it reach the renderer through write watch) */
     rx_nvn_pool_created(o->gpu, o->size);
     OLOG("pool %#llx size %#llx flags %#x", (unsigned long long)o->gpu, (unsigned long long)o->size, o->flags);
@@ -322,6 +323,7 @@ static int no_pool(Ctx *c, const char *what) {
 }
 NV(nvnMemoryPoolFinalize) {
     if (no_pool(c, "finalize")) return;
+    hos_memory_event(HOS_MEM_NVN_POOL, U64(0), 0, 0);
     nvn_pool *o = (nvn_pool *)P(0);
     struct nvn_vmap *vm = pool_vmap(o);
     if (vm) {   /* (its GPU range is not reused) */

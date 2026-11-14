@@ -181,7 +181,7 @@ VkDeviceMemory dma_buf_memory(uint64_t lo, uint64_t size) {
     ai.allocationSize = size;
     ai.memoryTypeIndex = type;
     VkDeviceMemory memory = VK_NULL_HANDLE;
-    const VkResult r = vkAllocateMemory(dev.device, &ai, nullptr, &memory);
+    const VkResult r = profile_allocate_memory(dev.device, &ai, nullptr, &memory);
     if (r != VK_SUCCESS) {   // (the fd is the caller's again when the import fails)
         close(fd);
         if (dmabuf_failures++ < 8)
@@ -254,7 +254,7 @@ bool import_dma_buf_pieces(uint64_t lo, uint64_t hi, uint64_t piece, Pool& p) {
     }
     if (res != VK_SUCCESS) {
         destroy_import_buffer(buffer);
-        for (VkDeviceMemory m : memories) vkFreeMemory(dev.device, m, nullptr);
+        for (VkDeviceMemory m : memories) profile_free_memory(dev.device, m, nullptr);
         if (dmabuf_failures++ < 8)
             logf("vk: pool %#llx..%#llx: its %zu dma-bufs not bound (VkResult %d)", (unsigned long long)lo, (unsigned long long)hi,
                  memories.size(), (int)res);
@@ -310,7 +310,7 @@ bool import_dma_buf(uint64_t lo, uint64_t hi, Pool& p) {
         // but must leave no partial import for the host-pointer fallback to publish.
         if (!memory || vkBindBufferMemory(dev.device, buffer, memory, 0) != VK_SUCCESS) {
             destroy_import_buffer(buffer);
-            if (memory) vkFreeMemory(dev.device, memory, nullptr);
+            if (memory) profile_free_memory(dev.device, memory, nullptr);
             return false;
         }
         p.lo = lo, p.hi = hi, p.buffer = buffer, p.memory = memory;
@@ -420,13 +420,13 @@ bool import_pool(uint64_t lo, uint64_t hi, Pool& p) {
     ai.pNext = &im;
     ai.allocationSize = bytes;
     ai.memoryTypeIndex = type;
-    const VkResult allocated = vkAllocateMemory(dev.device, &ai, nullptr, &p.memory);
+    const VkResult allocated = profile_allocate_memory(dev.device, &ai, nullptr, &p.memory);
     t3 = clk::now();
     const VkResult bound = allocated == VK_SUCCESS ? vkBindBufferMemory(dev.device, p.buffer, p.memory, 0) : allocated;
     if (bound != VK_SUCCESS) {
         import_result = bound;
         destroy_import_buffer(p.buffer);
-        if (allocated == VK_SUCCESS) vkFreeMemory(dev.device, p.memory, nullptr);
+        if (allocated == VK_SUCCESS) profile_free_memory(dev.device, p.memory, nullptr);
         p.buffer = VK_NULL_HANDLE, p.memory = VK_NULL_HANDLE;
         import_remember_failure(lo, hi);
         return false;
@@ -1823,8 +1823,8 @@ void bg_drain() {
         auto imp = imported.find(lo);
         if (imp != imported.end() && imp->second.hi >= p.hi) {
             destroy_import_buffer(p.buffer);
-            vkFreeMemory(dev.device, p.memory, nullptr);
-            for (VkDeviceMemory m : p.pieces) vkFreeMemory(dev.device, m, nullptr);
+            profile_free_memory(dev.device, p.memory, nullptr);
+            for (VkDeviceMemory m : p.pieces) profile_free_memory(dev.device, m, nullptr);
             continue;
         }
         bool overlap = false;   // (amd-fix: a chunk imported ahead that an import made since covers in part: the pools stay disjoint)
@@ -1841,8 +1841,8 @@ void bg_drain() {
         if (overlap) {
             st_prefetch_dropped++;
             destroy_import_buffer(p.buffer);
-            vkFreeMemory(dev.device, p.memory, nullptr);
-            for (VkDeviceMemory m : p.pieces) vkFreeMemory(dev.device, m, nullptr);
+            profile_free_memory(dev.device, p.memory, nullptr);
+            for (VkDeviceMemory m : p.pieces) profile_free_memory(dev.device, m, nullptr);
             continue;
         }
         if (imp != imported.end()) retire_pool(imp);
@@ -2798,8 +2798,8 @@ void reap_mirrors() {   // (pools_mu held)
     }
     while (!dead_imports.empty() && dead_imports.front().value <= mem_completed) {
         destroy_import_buffer(dead_imports.front().buffer);
-        vkFreeMemory(dev.device, dead_imports.front().memory, nullptr);
-        for (VkDeviceMemory m : dead_imports.front().pieces) vkFreeMemory(dev.device, m, nullptr);
+        profile_free_memory(dev.device, dead_imports.front().memory, nullptr);
+        for (VkDeviceMemory m : dead_imports.front().pieces) profile_free_memory(dev.device, m, nullptr);
         st_retired_imports_freed++, st_retired_import_bytes_freed += dead_imports.front().bytes;
         dead_imports.pop_front();
     }
@@ -2900,8 +2900,8 @@ void imports_give_back() {   // (pools_mu held)
     while (!evicted_pools.empty() && evicted_pools.front().mapped().retired_value <= mem_completed) {
         Pool& p = evicted_pools.front().mapped();
         destroy_import_buffer(p.buffer);
-        vkFreeMemory(dev.device, p.memory, nullptr);
-        for (VkDeviceMemory m : p.pieces) vkFreeMemory(dev.device, m, nullptr);   // (a pool imported as several dma-bufs)
+        profile_free_memory(dev.device, p.memory, nullptr);
+        for (VkDeviceMemory m : p.pieces) profile_free_memory(dev.device, m, nullptr);   // (a pool imported as several dma-bufs)
         evicted_pools.pop_front();
     }
     // (hookshot) Off by default on Windows, as giving retired imports back is (RX_VK_KEEP_RETIRED, retired_imports_give_back:

@@ -1384,6 +1384,7 @@ static int game_main(int argc, char **argv) {
 #ifdef _WIN32
     if (!narrow_paths_ok(argc, argv)) return 1;
     load_hookshot_env();
+    hos_memory_profile_start(hos_now_ns);
 #endif
     occlusion_switch();
     {
@@ -1527,6 +1528,9 @@ static int game_main(int argc, char **argv) {
         return 1;
     }
     hos_mem_init(hos_image_end);
+    hos_memory_profile_budget(hos_total_memory);
+    hos_memory_event(HOS_MEM_IMAGE, 0, IMAGE_BASE, n);
+    hos_memory_event(HOS_MEM_SYSTEM, 0, HOS_SYSTEM_BASE, HOS_SYSTEM_END - HOS_SYSTEM_BASE);
     {   /* (hookshot) Widescreen and ultrawide (nx2/oot_wide.py): HOS_ASPECT=<ratio> (2.3889 for 3440x1440), else the Insert menu's
            Ultrawide (off unless it says 1) takes the main monitor's shape. The game's picture takes that shape at its own height (the
            world wider at the sides on an ultrawide screen, narrower on a 16:10 or 4:3 one), its 16:9 cameras the picture's ratio.
@@ -1652,6 +1656,7 @@ int main(int argc, char **argv) {
     int hos_display_init(void);
     void hos_display_loop(void);
     load_hookshot_env();
+    hos_memory_profile_start(hos_now_ns);
     driver_cache_room();
     game_argc = argc, game_argv = argv;
     int prepare_shaders = 0;
